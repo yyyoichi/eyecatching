@@ -1,0 +1,135 @@
+<head>
+	<base target="_top">
+
+
+<script type="text/JavaScript">
+	google.script.run.withSuccessHandler(main).withFailureHandler(missFunc).getAlldata();
+  let limit = 0;
+  let i = 0;//開始数
+  let end = 0;//処理終了数
+  function logger(){
+    console.log(`${i} コの処理を開始済み\n${end} コの処理を完了\n残り ${limit-end} コ`);
+  }
+  function main(json){
+    const orders = JSON.parse(json);
+    limit = orders.length;
+    const timeInterval = 300;
+    const timer = setInterval (() =>{
+      if( i -end < 25 ){//30でもいいけど、なにかしらほかのプロジェクトのトリガーとかonOpenが起動しないとまずい。
+        const order = orders[i]//1つのimgDataを取得
+        //GASにデータを渡し、更新スタート!！ルンルン
+        google.script.run.withSuccessHandler(makeEyeCatch).withFailureHandler(missFunc).encode(order);
+      }
+      i++;
+      logger();
+      if(i===limit) clearInterval(timer);//処理終了
+    },timeInterval);
+  }
+
+  function makeEyeCatch({row, imageEncode, title}) {
+    const board = document.getElementById("board");  //getElementById()等でも可。オブジェクトが取れれば良い。
+    const ctx = board.getContext("2d");
+    const chara = new Image();
+    chara.src = imageEncode;
+    
+    chara.onload = () => {
+      // console.log(chara);
+      const imgHeight = chara.naturalHeight;
+      const imgWidth = chara.naturalWidth;
+      board.height = imgHeight;
+      board.width = imgWidth;
+      ctx.drawImage(chara, 0, 0);//画像サイズのままcanvasの生成
+
+      /**
+       * @type {Array}
+       */
+      const titles = title.split('\n');
+      const moji = new Moji(titles, imgHeight, imgWidth);
+      const size = moji.getSize();
+      titles.forEach( (text,  i) => {
+        const {x, y} = moji.getXYPotision(i);
+        ctx.font = size +'px メイリオ';
+        ctx.textAlign = "left";
+        ctx.fillText(text,x, y);
+      });
+
+      const fileName = titles.join('-');
+      const imageType = 'image/png';
+      const base64 = board.toDataURL(imageType);
+      const data = { fileName, imageType, base64, row };
+      google.script.run.withSuccessHandler(setState).withFailureHandler(missFunc).saveEyeCatchImg2Folder(data);
+    };
+  }
+  function setState(text){
+    const p = document.createElement('p');//テキストで表示する
+    p.textContent = "finish: " +text;
+    const box = document.getElementById('box');
+    box.appendChild( p );//Box要素に入れる
+    end++;//処理完了を一つ増やす
+    logger();
+  }
+  
+  class Moji {
+    constructor(titles, imgHeight, imgWidth) {
+      this.titles = titles;
+      // const posibleHeight = imgHeight *0.9;//90%の縦幅で文字を配置
+      const posibleWidth = imgWidth *0.9;//90%の横幅で文字を配置する
+
+      const getMojiSize = () => {
+        // console.log(imgWidth + ":width")
+        const maxSize = posibleWidth *0.085;//最大文字サイズ //1200pxなら　1200*0.9*0.08 = 約92px
+        const maxMojiLength = this.titles.reduce((number, x) => {
+          if (x.length > number) return x.length;
+          return number;
+        }, 0);
+        const size = Math.floor(posibleWidth /maxMojiLength)  //幅から文字数を割って1文字当たりの大きさを出す。
+        // console.log(maxMojiLength +"moji => " +size +"px" +", ※max:" +maxSize );
+        return maxSize < size ? maxSize: size;//90Px(仮)より大きかったら90px。小さければsize;  
+      }
+      this.imgWidth = imgWidth;
+      this.mojiSize = getMojiSize();
+      this.gyo_kan = this.mojiSize *0.4;
+
+      const getInitY = () => {
+        const numOfGyo = this.titles.length;
+        const mojisHeight = numOfGyo *this.mojiSize;//すべての行の合計高さ
+        const gyo_kansHeight = (numOfGyo-1) *this.gyo_kan;//すべての行間の合計高さ
+        const mojiBoxesHeight =  mojisHeight +gyo_kansHeight;
+        return ( imgHeight -mojiBoxesHeight) /2;
+      }
+
+      this.initY = getInitY();
+    }
+    getSize() {
+      return this.mojiSize;
+    }
+    getXYPotision(i){
+      const titleLength = this.titles[i].length;
+      const boxWidth = titleLength *this.mojiSize;
+      // console.log(boxWidth + "px .boxWidth")
+      const x = (this.imgWidth -boxWidth)/2;
+      const boxHeight = this.mojiSize +this.gyo_kan;
+      const y = (i *boxHeight) +this.initY;
+      return {x, y};
+    }
+    
+  }
+
+
+  function missFunc(){
+    const p = document.createElement('p');//完成した料理をテキストで表示する
+    p.textContent = 'error';
+    p.style.color = 'red';
+    const box = document.getElementById('box');
+    box.appendChild( p );//Box要素に入れる
+  }
+
+
+
+
+</script>
+</head>
+<div id="box"></div>
+<canvas id="board"></canvas>
+<canvas id="canvas"> </canvas>
+<img id="img" />
